@@ -1,0 +1,59 @@
+{
+  "name": "@code-happy/easyflow",
+  "version": "0.2.0",
+  "description": "CLI installer for easy-flow + superpowers + openspec-cn workflow skills",
+  "keywords": [
+    "easyflow",
+    "easy-flow",
+    "openspec",
+    "superpowers",
+    "ai-coding",
+    "skills",
+    "workflow",
+    "cli"
+  ],
+  "license": "MIT",
+  "author": "geraldguan",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "easyflow": "bin/easyflow.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "scripts",
+    "assets"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "node scripts/prepublish-check.cjs && npm run build",
+    "postinstall": "node scripts/postinstall.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^8.4.3",
+    "commander": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6"
+  },
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mikey0212/easyflow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Mikey0212/easyflow/issues"
+  },
+  "homepage": "https://github.com/Mikey0212/easyflow#readme"
+}

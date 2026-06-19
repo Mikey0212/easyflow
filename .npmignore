@@ -1,0 +1,9 @@
+src/
+tsconfig.json
+test/
+.git/
+.gitignore
+.prettierrc
+.prettierignore
+vitest.config.ts
+*.tgz

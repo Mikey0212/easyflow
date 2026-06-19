@@ -1,0 +1,240 @@
+/**
+ * OpenSpec CLI installation and initialization.
+ * Ported from comet — ensures `openspec init` is run after npm install.
+ */
+
+import { execSync } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { PLATFORMS, type InstallScope } from './platforms.js';
+import { printCommandErrorDetails } from './command-error.js';
+
+const VALID_TOOL_IDS = new Set(
+  PLATFORMS.filter((p) => p.openspecToolId).map((p) => p.openspecToolId!),
+);
+
+const ALL_OPENSPEC_WORKFLOWS = [
+  'propose',
+  'explore',
+  'new',
+  'continue',
+  'apply',
+  'ff',
+  'sync',
+  'archive',
+  'bulk-archive',
+  'verify',
+  'onboard',
+] as const;
+
+function quoteShellArg(value: string, platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'win32') {
+    return `"${value.replace(/"/g, '\\"').replace(/\\+$/, (match) => match + match)}"`;
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function buildOpenSpecInitCommand(
+  projectPath: string,
+  toolIds: string[],
+  scope: InstallScope,
+  homeDir = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const targetPath = scope === 'global' ? homeDir : projectPath;
+  return `openspec init ${quoteShellArg(targetPath, platform)} --tools ${quoteShellArg(toolIds.join(','), platform)} --profile custom`;
+}
+
+const ALL_WORKFLOWS_CONFIG =
+  JSON.stringify(
+    {
+      featureFlags: {},
+      profile: 'custom',
+      delivery: 'both',
+      workflows: [...ALL_OPENSPEC_WORKFLOWS],
+    },
+    null,
+    2,
+  ) + '\n';
+
+function getOpenSpecDefaultConfigDir(): string {
+  const platform = os.platform();
+  if (platform === 'win32') {
+    const appData = process.env.APPDATA;
+    if (appData) {
+      return path.join(appData, 'openspec');
+    }
+    return path.join(os.homedir(), 'AppData', 'Roaming', 'openspec');
+  }
+  const xdgConfig = process.env.XDG_CONFIG_HOME;
+  if (xdgConfig) {
+    return path.join(xdgConfig, 'openspec');
+  }
+  return path.join(os.homedir(), '.config', 'openspec');
+}
+
+function getOpenSpecDefaultConfigPath(): string {
+  return path.join(getOpenSpecDefaultConfigDir(), 'config.json');
+}
+
+function createOpenSpecAllWorkflowsEnv(): { env: NodeJS.ProcessEnv; configHome: string } {
+  const configHome = fs.mkdtempSync(path.join(os.tmpdir(), 'easyflow-openspec-profile-'));
+  try {
+    const openspecConfigDir = path.join(configHome, 'openspec');
+    fs.mkdirSync(openspecConfigDir, { recursive: true });
+    fs.writeFileSync(path.join(openspecConfigDir, 'config.json'), ALL_WORKFLOWS_CONFIG, 'utf-8');
+
+    return {
+      configHome,
+      env: {
+        ...process.env,
+        XDG_CONFIG_HOME: configHome,
+      },
+    };
+  } catch (error) {
+    fs.rmSync(configHome, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+interface ConfigBackup {
+  configPath: string;
+  backupPath: string;
+  hadExisting: boolean;
+}
+
+function writeAllWorkflowsToDefaultConfig(): ConfigBackup | null {
+  const configPath = getOpenSpecDefaultConfigPath();
+  const backupPath = configPath + '.easyflow-backup';
+  let hadExisting = false;
+
+  try {
+    hadExisting = fs.existsSync(configPath);
+    if (hadExisting) {
+      fs.copyFileSync(configPath, backupPath);
+    }
+
+    const configDir = path.dirname(configPath);
+    if (!fs.existsSync(configDir)) {
+      fs.mkdirSync(configDir, { recursive: true });
+    }
+    fs.writeFileSync(configPath, ALL_WORKFLOWS_CONFIG, 'utf-8');
+
+    return { configPath, backupPath, hadExisting };
+  } catch {
+    if (hadExisting) {
+      try {
+        fs.unlinkSync(backupPath);
+      } catch {
+        // Best-effort cleanup
+      }
+    }
+    return null;
+  }
+}
+
+function restoreDefaultConfig(backup: ConfigBackup | null): void {
+  if (!backup) return;
+  try {
+    if (backup.hadExisting) {
+      fs.copyFileSync(backup.backupPath, backup.configPath);
+      fs.unlinkSync(backup.backupPath);
+    } else {
+      if (fs.existsSync(backup.configPath)) {
+        fs.unlinkSync(backup.configPath);
+      }
+    }
+  } catch {
+    // Best-effort restore
+  }
+}
+
+function isCommandAvailable(command: string): boolean {
+  try {
+    const checkCmd = process.platform === 'win32' ? `where ${command}` : `which ${command}`;
+    execSync(checkCmd, { stdio: 'pipe', timeout: 10_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureOpenSpecCli(scope: InstallScope, projectPath: string): Promise<boolean> {
+  if (isCommandAvailable('openspec')) {
+    return true;
+  }
+
+  try {
+    const npmCmd =
+      scope === 'global'
+        ? 'npm install -g @fission-ai/openspec@latest'
+        : 'npm install @fission-ai/openspec@latest';
+    execSync(npmCmd, { cwd: projectPath, stdio: 'pipe', timeout: 120_000 });
+    return isCommandAvailable('openspec');
+  } catch (error) {
+    console.error(`    Failed to install OpenSpec CLI: ${(error as Error).message}`);
+    printCommandErrorDetails(error);
+    return false;
+  }
+}
+
+export type OpenSpecInstallResult = 'installed' | 'failed' | 'skipped';
+
+/**
+ * Install OpenSpec CLI and run `openspec init` for the given platforms.
+ * This is the main entry point called from init.ts.
+ */
+export async function installOpenSpec(
+  projectPath: string,
+  toolIds: string[],
+  scope: InstallScope,
+): Promise<OpenSpecInstallResult> {
+  // 1. Ensure CLI is available
+  const cliReady = await ensureOpenSpecCli(scope, projectPath);
+  if (!cliReady) {
+    console.error(
+      `    OpenSpec CLI not available. Install manually: npm install -g @fission-ai/openspec@latest`,
+    );
+    return 'failed';
+  }
+
+  // 2. Validate tool IDs
+  const unknownIds = toolIds.filter((id) => !VALID_TOOL_IDS.has(id));
+  if (unknownIds.length > 0) {
+    console.warn(`    Warning: unknown OpenSpec tool IDs: ${unknownIds.join(', ')}`);
+  }
+  const validIds = toolIds.filter((id) => VALID_TOOL_IDS.has(id));
+  if (validIds.length === 0) {
+    return 'skipped';
+  }
+
+  // 3. Run `openspec init`
+  let configHome: string | undefined;
+  let configBackup: ConfigBackup | null = null;
+  try {
+    const openspecEnv = createOpenSpecAllWorkflowsEnv();
+    configHome = openspecEnv.configHome;
+
+    configBackup = writeAllWorkflowsToDefaultConfig();
+
+    execSync(buildOpenSpecInitCommand(projectPath, validIds, scope), {
+      cwd: projectPath,
+      env: openspecEnv.env,
+      stdio: 'pipe',
+      timeout: 120_000,
+    });
+    return 'installed';
+  } catch (error) {
+    console.error(`    OpenSpec init failed: ${(error as Error).message}`);
+    printCommandErrorDetails(error);
+    return 'failed';
+  } finally {
+    restoreDefaultConfig(configBackup);
+    if (configHome) {
+      fs.rmSync(configHome, { recursive: true, force: true });
+    }
+  }
+}
+
+export { isCommandAvailable, buildOpenSpecInitCommand, quoteShellArg };
