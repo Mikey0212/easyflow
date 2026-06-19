@@ -17,7 +17,7 @@ OpenSpec 处理 **WHAT**（提案、设计、Spec 生命周期、归档）。
 
 Superpowers 处理 **HOW**（头脑风暴、TDD、子代理驱动开发、代码审查）。
 
-easyflow 在两者之上叠加**编排 + 度量 + 治理**，提供 triage → design → propose → lock → build → audit → ship → reflect 八阶段状态机。
+easyflow 在两者之上叠加**编排 + 度量 + 治理**，提供 design → propose → lock → build → audit → ship → reflect 七阶段状态机。
 
 ## 为什么需要 easyflow
 

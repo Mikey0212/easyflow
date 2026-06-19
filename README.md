@@ -17,7 +17,7 @@ OpenSpec handles **WHAT** (proposal, design, spec lifecycle, archive).
 
 Superpowers handles **HOW** (brainstorming, TDD, subagent-driven development, code review).
 
-easyflow layers **orchestration + metrics + governance** on top, providing an eight-phase state machine: triage → design → propose → lock → build → audit → ship → reflect.
+easyflow layers **orchestration + metrics + governance** on top, providing an seven-phase state machine: design → propose → lock → build → audit → ship → reflect.
 
 ## Why easyflow
 
